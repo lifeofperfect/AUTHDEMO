@@ -42,5 +42,29 @@ namespace AspNetIdentityDemo.Api.Controllers
             }
             return BadRequest("Some properties are not valid");
         }
+
+
+        [HttpPost]
+        [Route("Login")]
+        public async Task<IActionResult> Login(LoginViewModel request)
+        {
+            if (ModelState.IsValid)
+            {
+
+
+                var response = await _userService.Login(request);
+
+                if (response.IsSuccess)
+                {
+                    return Ok(response);
+
+                }
+                else
+                {
+                    return BadRequest(response);
+                }
+            }
+            return BadRequest("Some properties are not valid");
+        }
     }
 }

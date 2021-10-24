@@ -1,9 +1,14 @@
 ﻿using AspNetIdentityDemo.Api.Models.Request.Dto;
 using AspNetIdentityDemo.Api.Models.Response;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace AspNetIdentityDemo.Api.Services
@@ -11,14 +16,18 @@ namespace AspNetIdentityDemo.Api.Services
     public interface IUserService
     {
         Task<UserManagerResponse> RegisterUser(RegisterViewModel request);
+        Task<UserManagerResponse> Login(LoginViewModel request);
     }
 
     public class UserService : IUserService
     {
         private UserManager<IdentityUser> _userManager;
-        public UserService(UserManager<IdentityUser> userManager)
+        private IConfiguration _config;
+        public UserService(UserManager<IdentityUser> userManager, IConfiguration config)
         {
             _userManager = userManager;
+            _config = config;
+
         }
 
         public async Task<UserManagerResponse> RegisterUser(RegisterViewModel request)
@@ -69,6 +78,56 @@ namespace AspNetIdentityDemo.Api.Services
                 Message = "User did not create",
                 IsSuccess = false,
                 Errors = response.Errors.Select(e => e.Description)
+            };
+        }
+
+        public async Task<UserManagerResponse> Login(LoginViewModel request)
+        {
+            var user = await _userManager.FindByNameAsync(request.Email);
+
+            if(user == null)
+            {
+                return new UserManagerResponse
+                {
+                    Message = "There is no user with that email address",
+                    IsSuccess = false
+                };
+            }
+
+            var result = await _userManager.CheckPasswordAsync(user, request.Password);
+
+            if (!result)
+            {
+                return new UserManagerResponse
+                {
+                    Message = "Invalid password",
+                    IsSuccess = false
+                };
+            }
+
+            var claims = new[]
+            {
+                new Claim("Email", request.Email),
+                new Claim(ClaimTypes.NameIdentifier, user.Id)
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["AuthSettings:Key"]));
+
+            var token = new JwtSecurityToken(
+                issuer: _config["AuthSettings:Issuer"],
+                audience: _config["AuthSettings:Audience"],
+                claims: claims,
+                expires: DateTime.Now.AddDays(30),
+                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+                );
+
+            string tokenAsString = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return new UserManagerResponse
+            {
+                Message = tokenAsString,
+                IsSuccess = true,
+                ExpireDate = token.ValidTo
             };
         }
     }
